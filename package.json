@@ -6,20 +6,32 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@sp-api-sdk/auth": "^2.2.22",
+    "@sp-api-sdk/catalog-items-api-2022-04-01": "^4.2.9",
+    "@sp-api-sdk/common": "^2.1.28",
+    "@sp-api-sdk/fba-inventory-api-v1": "^3.0.19",
+    "@sp-api-sdk/listings-items-api-2021-08-01": "^5.2.12",
+    "@sp-api-sdk/product-pricing-api-v0": "^3.1.17",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.0.18",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.0.18"
   }
 }
