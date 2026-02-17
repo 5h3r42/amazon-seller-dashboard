@@ -20,8 +20,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Amazon Catalog Lookup",
-  description: "Lookup Amazon catalog items by EAN, UPC, or GTIN.",
+  title: "Amazon Seller Dashboard",
+  description: "Sellerboard-style dashboard powered by Amazon SP-API data.",
 };
 
 export default function RootLayout({

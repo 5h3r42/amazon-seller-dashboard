@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BarChart3,
+  FileBarChart2,
   LayoutDashboard,
   Package,
+  ReceiptText,
+  ScanSearch,
   Settings,
-  ShoppingCart,
+  Truck,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -38,14 +41,17 @@ type NavSection = {
 const navSections: NavSection[] = [
   {
     title: "Overview",
-    items: [{ label: "Dashboard", href: "/", icon: LayoutDashboard }],
+    items: [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
   },
   {
     title: "Operations",
     items: [
       { label: "Products", href: "/products", icon: Package },
-      { label: "Orders", href: "/orders", icon: ShoppingCart },
-      { label: "Analytics", href: "/analytics", icon: BarChart3 },
+      { label: "Shipping Costs", href: "/shipping-costs", icon: Truck },
+      { label: "Expenses", href: "/expenses", icon: ReceiptText },
+      { label: "Cashflow", href: "/cashflow", icon: Wallet },
+      { label: "Reports", href: "/reports", icon: FileBarChart2 },
+      { label: "Scan Workspace", href: "/scan-workspace", icon: ScanSearch },
     ],
   },
   {
@@ -55,10 +61,6 @@ const navSections: NavSection[] = [
 ];
 
 function isItemActive(pathname: string, href: string): boolean {
-  if (href === "/") {
-    return pathname === "/";
-  }
-
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -71,7 +73,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg" tooltip="Amazon Seller Dashboard">
-              <Link href="/" aria-label="Go to dashboard">
+              <Link href="/dashboard" aria-label="Go to dashboard">
                 <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
                   <LayoutDashboard className="size-4" />
                 </div>

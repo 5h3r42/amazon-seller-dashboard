@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AmazonConnection {
+  id                    String   @id @default(cuid())
+  sellerId              String
+  marketplaceId         String
+  lwaClientId           String
+  refreshTokenEncrypted String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  orders Order[]
+
+  @@unique([sellerId, marketplaceId], map: "seller_marketplace_unique")
+  @@index([marketplaceId])
+}
+
+model Order {
+  id            String   @id @default(cuid())
+  amazonOrderId String   @unique
+  purchaseDate  DateTime
+  orderStatus   String
+  marketplaceId String
+  buyerCountry  String?
+  totalAmount   Decimal?
+  currency      String?
+  connectionId  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  connection      AmazonConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
+  financialEvents FinancialEvent[]
+
+  @@index([purchaseDate])
+  @@index([marketplaceId, purchaseDate])
+}
+
+model OrderItem {
+  id                String   @id @default(cuid())
+  amazonOrderId     String
+  asin              String?
+  sku               String?
+  title             String?
+  quantityOrdered   Int      @default(0)
+  itemPrice         Decimal?
+  itemTax           Decimal?
+  promotionDiscount Decimal?
+  isRefunded        Boolean  @default(false)
+  productId         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  order   Order    @relation(fields: [amazonOrderId], references: [amazonOrderId], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([amazonOrderId])
+  @@index([asin])
+  @@index([sku])
+  @@index([title])
+}
+
+model FinancialEvent {
+  id            String   @id @default(cuid())
+  eventKey      String   @unique
+  postedDate    DateTime
+  eventType     String
+  amount        Decimal
+  currency      String
+  marketplaceId String?
+  amazonOrderId String?
+  asin          String?
+  sku           String?
+  rawJson       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  order Order? @relation(fields: [amazonOrderId], references: [amazonOrderId], onDelete: SetNull)
+
+  @@index([postedDate])
+  @@index([marketplaceId, postedDate])
+  @@index([amazonOrderId])
+  @@index([asin])
+  @@index([sku])
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  asin      String?  @unique
+  sku       String?  @unique
+  title     String?
+  brand     String?
+  category  String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orderItems OrderItem[]
+}
+
+model COGS {
+  id          String   @id @default(cuid())
+  sku         String?  @unique
+  asin        String?  @unique
+  unitCost    Decimal
+  includesVat Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DailySummary {
+  id          String   @id @default(cuid())
+  date        DateTime
+  marketplaceId String
+  sales       Decimal  @default(0)
+  ordersCount Int      @default(0)
+  units       Int      @default(0)
+  refunds     Decimal  @default(0)
+  amazonFees  Decimal  @default(0)
+  otherFees   Decimal  @default(0)
+  netPayout   Decimal  @default(0)
+  cogs        Decimal  @default(0)
+  grossProfit Decimal  @default(0)
+  netProfit   Decimal  @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, marketplaceId], map: "date_marketplace_summary_unique")
+  @@index([marketplaceId, date])
+}
