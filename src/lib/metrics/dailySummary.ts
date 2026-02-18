@@ -6,12 +6,14 @@ import { prisma } from "@/lib/db";
 export interface RecomputeDailySummaryOptions {
   days?: number;
   marketplaceId?: string;
+  dryRun?: boolean;
 }
 
 export interface RecomputeDailySummaryResult {
   marketplaceId: string;
   startDate: string;
   endDate: string;
+  dryRun: boolean;
   summariesWritten: number;
   missingCogsItems: number;
 }
@@ -151,6 +153,7 @@ async function resolveMarketplaceId(input?: string): Promise<string> {
 export async function recomputeDailySummary({
   days = 30,
   marketplaceId,
+  dryRun = false,
 }: RecomputeDailySummaryOptions = {}): Promise<RecomputeDailySummaryResult> {
   const resolvedMarketplaceId = await resolveMarketplaceId(marketplaceId);
 
@@ -175,12 +178,29 @@ export async function recomputeDailySummary({
 
   const financialEvents = await prisma.financialEvent.findMany({
     where: {
+      marketplaceId: resolvedMarketplaceId,
       postedDate: {
         gte: startDate,
         lt: endExclusive,
       },
     },
   });
+
+  const orphanFinancialEvents =
+    orderIdSet.size > 0
+      ? await prisma.financialEvent.findMany({
+          where: {
+            marketplaceId: null,
+            amazonOrderId: {
+              in: [...orderIdSet],
+            },
+            postedDate: {
+              gte: startDate,
+              lt: endExclusive,
+            },
+          },
+        })
+      : [];
 
   const cogsEntries = await prisma.cOGS.findMany();
   const cogsBySku = new Map<string, number>();
@@ -234,14 +254,7 @@ export async function recomputeDailySummary({
     }
   }
 
-  for (const event of financialEvents) {
-    if (
-      event.marketplaceId &&
-      event.marketplaceId !== resolvedMarketplaceId &&
-      (!event.amazonOrderId || !orderIdSet.has(event.amazonOrderId))
-    ) {
-      continue;
-    }
+  for (const event of [...financialEvents, ...orphanFinancialEvents]) {
 
     const dateKey = toDateKey(event.postedDate);
     const accumulator = ensureAccumulator(dayMap, dateKey);
@@ -273,40 +286,42 @@ export async function recomputeDailySummary({
     accumulator.grossProfit = accumulator.sales - accumulator.amazonFees - accumulator.cogs;
     accumulator.netProfit = accumulator.grossProfit - accumulator.otherFees;
 
-    await prisma.dailySummary.upsert({
-      where: {
-        date_marketplaceId: {
+    if (!dryRun) {
+      await prisma.dailySummary.upsert({
+        where: {
+          date_marketplaceId: {
+            date: fromDateKey(dateKey),
+            marketplaceId: resolvedMarketplaceId,
+          },
+        },
+        update: {
+          sales: accumulator.sales,
+          ordersCount: accumulator.ordersCount,
+          units: accumulator.units,
+          refunds: accumulator.refunds,
+          amazonFees: accumulator.amazonFees,
+          otherFees: accumulator.otherFees,
+          netPayout: accumulator.netPayout,
+          cogs: accumulator.cogs,
+          grossProfit: accumulator.grossProfit,
+          netProfit: accumulator.netProfit,
+        },
+        create: {
           date: fromDateKey(dateKey),
           marketplaceId: resolvedMarketplaceId,
+          sales: accumulator.sales,
+          ordersCount: accumulator.ordersCount,
+          units: accumulator.units,
+          refunds: accumulator.refunds,
+          amazonFees: accumulator.amazonFees,
+          otherFees: accumulator.otherFees,
+          netPayout: accumulator.netPayout,
+          cogs: accumulator.cogs,
+          grossProfit: accumulator.grossProfit,
+          netProfit: accumulator.netProfit,
         },
-      },
-      update: {
-        sales: accumulator.sales,
-        ordersCount: accumulator.ordersCount,
-        units: accumulator.units,
-        refunds: accumulator.refunds,
-        amazonFees: accumulator.amazonFees,
-        otherFees: accumulator.otherFees,
-        netPayout: accumulator.netPayout,
-        cogs: accumulator.cogs,
-        grossProfit: accumulator.grossProfit,
-        netProfit: accumulator.netProfit,
-      },
-      create: {
-        date: fromDateKey(dateKey),
-        marketplaceId: resolvedMarketplaceId,
-        sales: accumulator.sales,
-        ordersCount: accumulator.ordersCount,
-        units: accumulator.units,
-        refunds: accumulator.refunds,
-        amazonFees: accumulator.amazonFees,
-        otherFees: accumulator.otherFees,
-        netPayout: accumulator.netPayout,
-        cogs: accumulator.cogs,
-        grossProfit: accumulator.grossProfit,
-        netProfit: accumulator.netProfit,
-      },
-    });
+      });
+    }
 
     summariesWritten += 1;
   }
@@ -315,6 +330,7 @@ export async function recomputeDailySummary({
     marketplaceId: resolvedMarketplaceId,
     startDate: startDate.toISOString(),
     endDate: today.toISOString(),
+    dryRun,
     summariesWritten,
     missingCogsItems,
   };

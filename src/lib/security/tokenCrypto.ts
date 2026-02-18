@@ -2,36 +2,44 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 
 const CIPHER_ALGORITHM = "aes-256-gcm";
 const ENCRYPTION_VERSION = "v1";
+const DEV_FALLBACK_KEY = "dev-only-fallback-key";
 
-function getEncryptionSecret(): string {
-  return (
-    process.env.APP_ENCRYPTION_KEY?.trim() ||
-    process.env.SP_API_CLIENT_SECRET?.trim() ||
-    process.env.LWA_CLIENT_SECRET?.trim() ||
-    "dev-only-fallback-key"
-  );
+function asNonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
 
-function getEncryptionKey(): Buffer {
-  return createHash("sha256").update(getEncryptionSecret()).digest();
+function getLegacyEncryptionSecrets(): string[] {
+  const candidates = [
+    asNonEmpty(process.env.SP_API_CLIENT_SECRET),
+    asNonEmpty(process.env.LWA_CLIENT_SECRET),
+  ].filter((value): value is string => Boolean(value));
+
+  if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") {
+    candidates.push(DEV_FALLBACK_KEY);
+  }
+
+  return [...new Set(candidates)];
 }
 
-export function encryptSecret(value: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv(CIPHER_ALGORITHM, getEncryptionKey(), iv);
+function getPrimaryEncryptionSecret(): string {
+  const appKey = asNonEmpty(process.env.APP_ENCRYPTION_KEY);
+  if (appKey) {
+    return appKey;
+  }
 
-  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  const authTag = cipher.getAuthTag();
+  if (process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test") {
+    throw new Error("APP_ENCRYPTION_KEY is required outside development/test.");
+  }
 
-  return [
-    ENCRYPTION_VERSION,
-    iv.toString("base64url"),
-    authTag.toString("base64url"),
-    encrypted.toString("base64url"),
-  ].join(".");
+  return getLegacyEncryptionSecrets()[0] ?? DEV_FALLBACK_KEY;
 }
 
-export function decryptSecret(payload: string): string {
+function deriveEncryptionKey(secret: string): Buffer {
+  return createHash("sha256").update(secret).digest();
+}
+
+function decryptWithSecret(payload: string, secret: string): string {
   const [version, ivEncoded, authTagEncoded, encryptedEncoded] = payload.split(".");
 
   if (
@@ -45,7 +53,7 @@ export function decryptSecret(payload: string): string {
 
   const decipher = createDecipheriv(
     CIPHER_ALGORITHM,
-    getEncryptionKey(),
+    deriveEncryptionKey(secret),
     Buffer.from(ivEncoded, "base64url"),
   );
 
@@ -57,4 +65,46 @@ export function decryptSecret(payload: string): string {
   ]);
 
   return decrypted.toString("utf8");
+}
+
+export function encryptSecret(value: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv(
+    CIPHER_ALGORITHM,
+    deriveEncryptionKey(getPrimaryEncryptionSecret()),
+    iv,
+  );
+
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return [
+    ENCRYPTION_VERSION,
+    iv.toString("base64url"),
+    authTag.toString("base64url"),
+    encrypted.toString("base64url"),
+  ].join(".");
+}
+
+export function decryptSecret(payload: string): string {
+  const secrets = [
+    getPrimaryEncryptionSecret(),
+    ...getLegacyEncryptionSecrets(),
+  ];
+
+  let lastError: unknown;
+
+  for (const secret of [...new Set(secrets)]) {
+    try {
+      return decryptWithSecret(payload, secret);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error("Invalid encrypted token payload");
 }

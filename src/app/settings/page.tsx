@@ -41,6 +41,9 @@ export default async function SettingsPage() {
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>`SP_API_CLIENT_ID` and `SP_API_CLIENT_SECRET` are required for sync.</p>
           <p>`SP_API_REFRESH_TOKEN` is optional when connection token is saved in DB.</p>
+          <p>`APP_ENCRYPTION_KEY` is required outside development/test to encrypt stored tokens.</p>
+          <p>`INTERNAL_API_TOKEN` protects `/api/sync/*` and `/api/settings/*` routes.</p>
+          <p>`NEXT_PUBLIC_INTERNAL_API_TOKEN` must match for browser-based sync/settings actions.</p>
           <p>`SP_API_SELLER_ID`, `SP_API_MARKETPLACE_ID`, `SP_API_REGION` are supported.</p>
           <p>`SP_API_AWS_ACCESS_KEY`, `SP_API_AWS_SECRET_KEY`, and `SP_API_ROLE_ARN` are accepted for future extensions.</p>
           <p>`DATABASE_URL` should point to your local Prisma database file.</p>

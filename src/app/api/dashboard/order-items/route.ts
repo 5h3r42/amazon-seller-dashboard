@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import {
+  type DashboardGroupBy,
   getDashboardOrderItems,
   type DashboardRangeInput,
 } from "@/lib/dashboard/queries";
@@ -15,6 +16,23 @@ function toRangePreset(raw: string | null): DashboardRangeInput["preset"] {
   return "today";
 }
 
+function toGroupBy(raw: string | null): DashboardGroupBy {
+  if (raw === "product" || raw === "order") {
+    return raw;
+  }
+
+  return "none";
+}
+
+function toPositiveInt(raw: string | null, fallback: number): number {
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const requestUrl = new URL(request.url);
@@ -24,6 +42,9 @@ export async function GET(request: Request): Promise<NextResponse> {
     const to = requestUrl.searchParams.get("to") ?? undefined;
     const search = requestUrl.searchParams.get("search") ?? undefined;
     const marketplaceId = requestUrl.searchParams.get("marketplaceId") ?? undefined;
+    const groupBy = toGroupBy(requestUrl.searchParams.get("groupBy"));
+    const page = toPositiveInt(requestUrl.searchParams.get("page"), 1);
+    const pageSize = toPositiveInt(requestUrl.searchParams.get("pageSize"), 50);
 
     const payload = await getDashboardOrderItems({
       range: {
@@ -33,6 +54,9 @@ export async function GET(request: Request): Promise<NextResponse> {
       },
       search,
       marketplaceId,
+      groupBy,
+      page,
+      pageSize,
     });
 
     return NextResponse.json(

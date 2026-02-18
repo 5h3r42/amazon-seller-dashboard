@@ -60,6 +60,7 @@ model OrderItem {
 
   order   Order    @relation(fields: [amazonOrderId], references: [amazonOrderId], onDelete: Cascade)
   product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  refundAllocations RefundAllocation[]
 
   @@index([amazonOrderId])
   @@index([asin])
@@ -83,12 +84,30 @@ model FinancialEvent {
   updatedAt     DateTime @updatedAt
 
   order Order? @relation(fields: [amazonOrderId], references: [amazonOrderId], onDelete: SetNull)
+  refundAllocations RefundAllocation[]
 
   @@index([postedDate])
   @@index([marketplaceId, postedDate])
   @@index([amazonOrderId])
   @@index([asin])
   @@index([sku])
+}
+
+model RefundAllocation {
+  id               String   @id @default(cuid())
+  financialEventId String
+  orderItemId      String
+  amount           Decimal
+  currency         String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  financialEvent FinancialEvent @relation(fields: [financialEventId], references: [id], onDelete: Cascade)
+  orderItem      OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@unique([financialEventId, orderItemId], map: "refund_event_item_unique")
+  @@index([financialEventId])
+  @@index([orderItemId])
 }
 
 model Product {
@@ -134,4 +153,40 @@ model DailySummary {
 
   @@unique([date, marketplaceId], map: "date_marketplace_summary_unique")
   @@index([marketplaceId, date])
+}
+
+model Expense {
+  id         String   @id @default(cuid())
+  date       DateTime
+  amount     Decimal
+  currency   String   @default("GBP")
+  category   String
+  notes      String?
+  recurring  Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([date])
+  @@index([category, date])
+}
+
+model SyncRun {
+  id           String   @id @default(cuid())
+  runType      String
+  status       String
+  requestId    String
+  marketplaceId String?
+  days         Int?
+  dryRun       Boolean  @default(false)
+  warningsJson String?
+  errorMessage String?
+  startedAt    DateTime @default(now())
+  finishedAt   DateTime?
+  durationMs   Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([runType, startedAt])
+  @@index([status, startedAt])
 }

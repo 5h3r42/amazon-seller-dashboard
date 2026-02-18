@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db";
-import { encryptSecret } from "@/lib/security/tokenCrypto";
+import { decryptSecret, encryptSecret } from "@/lib/security/tokenCrypto";
 
 export const runtime = "nodejs";
 
@@ -66,9 +66,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const encryptedRefreshToken = payload.refreshToken
-      ? encryptSecret(payload.refreshToken)
-      : existing?.refreshTokenEncrypted;
+    let encryptedRefreshToken = existing?.refreshTokenEncrypted;
+
+    if (payload.refreshToken) {
+      encryptedRefreshToken = encryptSecret(payload.refreshToken);
+    } else if (existing?.refreshTokenEncrypted) {
+      // Re-encrypt existing tokens with the active primary key policy.
+      encryptedRefreshToken = encryptSecret(decryptSecret(existing.refreshTokenEncrypted));
+    }
 
     const connection = await prisma.amazonConnection.upsert({
       where: {

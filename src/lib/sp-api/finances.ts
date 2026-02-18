@@ -14,6 +14,19 @@ interface FetchFinancialEventsInput {
   maxPages?: number;
 }
 
+export interface FinancialEventsFetchDiagnostics {
+  pagesFetched: number;
+  eventPageLimitHit: boolean;
+  eventsBeforeDedup: number;
+  eventsAfterDedup: number;
+  maxPages: number;
+}
+
+export interface FetchFinancialEventsResult {
+  events: FlattenedFinancialEvent[];
+  diagnostics: FinancialEventsFetchDiagnostics;
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): UnknownRecord | undefined {
@@ -208,7 +221,7 @@ export async function fetchFinancialEvents({
   postedAfter,
   postedBefore,
   maxPages = 2,
-}: FetchFinancialEventsInput): Promise<FlattenedFinancialEvent[]> {
+}: FetchFinancialEventsInput): Promise<FetchFinancialEventsResult> {
   const client = createFinancesClient(config);
 
   const events: FlattenedFinancialEvent[] = [];
@@ -247,5 +260,14 @@ export async function fetchFinancialEvents({
     deduped.set(event.eventKey, event);
   }
 
-  return [...deduped.values()];
+  return {
+    events: [...deduped.values()],
+    diagnostics: {
+      pagesFetched,
+      eventPageLimitHit: Boolean(nextToken && pagesFetched >= maxPages),
+      eventsBeforeDedup: events.length,
+      eventsAfterDedup: deduped.size,
+      maxPages,
+    },
+  };
 }

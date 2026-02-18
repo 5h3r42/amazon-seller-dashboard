@@ -8,15 +8,32 @@ import { fetchOrdersWithItems } from "@/lib/sp-api/orders";
 export interface SyncOrdersOptions {
   days?: number;
   marketplaceId?: string;
+  maxPages?: number;
+  maxOrders?: number;
+  maxOrdersWithItems?: number;
+  dryRun?: boolean;
 }
 
 export interface SyncOrdersResult {
   marketplaceId: string;
   createdAfter: string;
+  dryRun: boolean;
   ordersFetched: number;
   ordersUpserted: number;
   orderItemsUpserted: number;
   productsUpserted: number;
+  diagnostics: {
+    pagesFetched: number;
+    pageLimitHit: boolean;
+    orderLimitHit: boolean;
+    totalOrdersFetched: number;
+    uniqueOrdersFetched: number;
+    ordersWithItemsFetched: number;
+    ordersSkippedForItems: number;
+    maxPages: number;
+    maxOrders: number;
+    maxOrdersWithItems: number;
+  };
 }
 
 function parseMoneyAmount(value: string | undefined): number | null {
@@ -105,100 +122,120 @@ async function upsertProductFromOrderItem(
 export async function syncOrdersFromSpApi({
   days = 30,
   marketplaceId,
+  maxPages,
+  maxOrders,
+  maxOrdersWithItems,
+  dryRun = false,
 }: SyncOrdersOptions = {}): Promise<SyncOrdersResult> {
   const config = await resolveSpApiConfig({ marketplaceId });
 
   const createdAfter = subtractDays(new Date(), Math.max(days, 1));
   const createdBefore = new Date(Date.now() - 2 * 60 * 1000);
 
-  const entries = await fetchOrdersWithItems({
+  const fetchResult = await fetchOrdersWithItems({
     config,
     createdAfter,
     createdBefore,
+    maxPages,
+    maxOrders,
+    maxOrdersWithItems,
   });
+  const entries = fetchResult.entries;
 
   let ordersUpserted = 0;
   let orderItemsUpserted = 0;
   let productsUpserted = 0;
 
-  for (const entry of entries) {
-    await prisma.$transaction(async (tx) => {
-      const order = entry.order;
+  if (!dryRun) {
+    for (const entry of entries) {
+      await prisma.$transaction(async (tx) => {
+        const order = entry.order;
 
-      const purchaseDate = new Date(order.PurchaseDate);
+        const purchaseDate = new Date(order.PurchaseDate);
 
-      if (Number.isNaN(purchaseDate.getTime())) {
-        return;
-      }
-
-      const amount = parseMoneyAmount(order.OrderTotal?.Amount);
-
-      const persistedOrder = await tx.order.upsert({
-        where: {
-          amazonOrderId: order.AmazonOrderId,
-        },
-        update: {
-          purchaseDate,
-          orderStatus: order.OrderStatus,
-          marketplaceId: order.MarketplaceId ?? config.marketplaceId,
-          buyerCountry: order.ShippingAddress?.CountryCode,
-          totalAmount: amount,
-          currency: order.OrderTotal?.CurrencyCode ?? null,
-          connectionId: config.connectionId,
-        },
-        create: {
-          amazonOrderId: order.AmazonOrderId,
-          purchaseDate,
-          orderStatus: order.OrderStatus,
-          marketplaceId: order.MarketplaceId ?? config.marketplaceId,
-          buyerCountry: order.ShippingAddress?.CountryCode,
-          totalAmount: amount,
-          currency: order.OrderTotal?.CurrencyCode ?? null,
-          connectionId: config.connectionId,
-        },
-      });
-
-      await tx.orderItem.deleteMany({
-        where: {
-          amazonOrderId: persistedOrder.amazonOrderId,
-        },
-      });
-
-      for (const item of entry.items) {
-        const productId = await upsertProductFromOrderItem(tx, item);
-
-        if (productId) {
-          productsUpserted += 1;
+        if (Number.isNaN(purchaseDate.getTime())) {
+          return;
         }
 
-        await tx.orderItem.create({
-          data: {
-            amazonOrderId: persistedOrder.amazonOrderId,
-            asin: item.ASIN,
-            sku: item.SellerSKU,
-            title: item.Title,
-            quantityOrdered: item.QuantityOrdered,
-            itemPrice: parseMoneyAmount(item.ItemPrice?.Amount),
-            itemTax: parseMoneyAmount(item.ItemTax?.Amount),
-            promotionDiscount: parseMoneyAmount(item.PromotionDiscount?.Amount),
-            isRefunded: false,
-            productId,
+        const amount = parseMoneyAmount(order.OrderTotal?.Amount);
+
+        const persistedOrder = await tx.order.upsert({
+          where: {
+            amazonOrderId: order.AmazonOrderId,
+          },
+          update: {
+            purchaseDate,
+            orderStatus: order.OrderStatus,
+            marketplaceId: order.MarketplaceId ?? config.marketplaceId,
+            buyerCountry: order.ShippingAddress?.CountryCode,
+            totalAmount: amount,
+            currency: order.OrderTotal?.CurrencyCode ?? null,
+            connectionId: config.connectionId,
+          },
+          create: {
+            amazonOrderId: order.AmazonOrderId,
+            purchaseDate,
+            orderStatus: order.OrderStatus,
+            marketplaceId: order.MarketplaceId ?? config.marketplaceId,
+            buyerCountry: order.ShippingAddress?.CountryCode,
+            totalAmount: amount,
+            currency: order.OrderTotal?.CurrencyCode ?? null,
+            connectionId: config.connectionId,
           },
         });
 
-        orderItemsUpserted += 1;
-      }
+        await tx.orderItem.deleteMany({
+          where: {
+            amazonOrderId: persistedOrder.amazonOrderId,
+          },
+        });
 
-      ordersUpserted += 1;
-    });
+        for (const item of entry.items) {
+          const productId = await upsertProductFromOrderItem(tx, item);
+
+          if (productId) {
+            productsUpserted += 1;
+          }
+
+          await tx.orderItem.create({
+            data: {
+              amazonOrderId: persistedOrder.amazonOrderId,
+              asin: item.ASIN,
+              sku: item.SellerSKU,
+              title: item.Title,
+              quantityOrdered: item.QuantityOrdered,
+              itemPrice: parseMoneyAmount(item.ItemPrice?.Amount),
+              itemTax: parseMoneyAmount(item.ItemTax?.Amount),
+              promotionDiscount: parseMoneyAmount(item.PromotionDiscount?.Amount),
+              isRefunded: false,
+              productId,
+            },
+          });
+
+          orderItemsUpserted += 1;
+        }
+
+        ordersUpserted += 1;
+      });
+    }
+  } else {
+    ordersUpserted = entries.length;
+    orderItemsUpserted = entries.reduce((sum, entry) => sum + entry.items.length, 0);
+    productsUpserted = entries.reduce(
+      (sum, entry) =>
+        sum + entry.items.filter((item) => Boolean(item.ASIN?.trim() || item.SellerSKU?.trim())).length,
+      0,
+    );
   }
 
   return {
     marketplaceId: config.marketplaceId,
     createdAfter: createdAfter.toISOString(),
+    dryRun,
     ordersFetched: entries.length,
     ordersUpserted,
     orderItemsUpserted,
     productsUpserted,
+    diagnostics: fetchResult.diagnostics,
   };
 }

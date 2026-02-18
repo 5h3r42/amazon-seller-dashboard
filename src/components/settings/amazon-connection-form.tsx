@@ -21,6 +21,7 @@ interface AmazonConnectionFormProps {
 export function AmazonConnectionForm({
   initialConnection,
 }: AmazonConnectionFormProps) {
+  const internalApiToken = process.env.NEXT_PUBLIC_INTERNAL_API_TOKEN?.trim();
   const [sellerId, setSellerId] = useState(initialConnection?.sellerId ?? "");
   const [marketplaceId, setMarketplaceId] = useState(
     initialConnection?.marketplaceId ?? process.env.NEXT_PUBLIC_DEFAULT_MARKETPLACE_ID ?? "",
@@ -43,6 +44,11 @@ export function AmazonConnectionForm({
         method: "POST",
         headers: {
           "content-type": "application/json",
+          ...(internalApiToken
+            ? {
+                "x-internal-api-token": internalApiToken,
+              }
+            : {}),
         },
         body: JSON.stringify({
           sellerId,

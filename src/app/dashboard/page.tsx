@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import {
+  type DashboardGroupBy,
   getDashboardKpis,
   getDashboardOrderItems,
   type DashboardRangePreset,
@@ -24,6 +25,11 @@ function formatDayForUi(dateInput: string): string {
 export default async function DashboardPage() {
   let kpis: Awaited<ReturnType<typeof getDashboardKpis>> | null = null;
   let initialRows: Awaited<ReturnType<typeof getDashboardOrderItems>>["rows"] = [];
+  let initialGroupBy: DashboardGroupBy = "none";
+  let initialPage = 1;
+  let initialPageSize = 50;
+  let initialTotalRows = 0;
+  let initialTotalPages = 1;
   let initialRangePreset: DashboardRangePreset = "today";
   let initialCustomFrom = new Date().toISOString().slice(0, 10);
   let initialCustomTo = initialCustomFrom;
@@ -37,9 +43,17 @@ export default async function DashboardPage() {
         preset: "today",
       },
       marketplaceId: kpis.marketplaceId,
+      groupBy: "none",
+      page: 1,
+      pageSize: initialPageSize,
     });
 
     initialRows = orderItems.rows;
+    initialPage = orderItems.page;
+    initialPageSize = orderItems.pageSize;
+    initialTotalRows = orderItems.totalRows;
+    initialTotalPages = orderItems.totalPages;
+    initialGroupBy = orderItems.groupBy;
 
     const latestDateInput = kpis.latestOrderDate?.slice(0, 10) ?? null;
     const todayInput = new Date().toISOString().slice(0, 10);
@@ -52,10 +66,18 @@ export default async function DashboardPage() {
           to: latestDateInput,
         },
         marketplaceId: kpis.marketplaceId,
+        groupBy: "none",
+        page: 1,
+        pageSize: initialPageSize,
       });
 
       if (latestRangeItems.rows.length > 0) {
         initialRows = latestRangeItems.rows;
+        initialPage = latestRangeItems.page;
+        initialPageSize = latestRangeItems.pageSize;
+        initialTotalRows = latestRangeItems.totalRows;
+        initialTotalPages = latestRangeItems.totalPages;
+        initialGroupBy = latestRangeItems.groupBy;
         initialRangePreset = "custom";
         initialCustomFrom = latestDateInput;
         initialCustomTo = latestDateInput;
@@ -84,6 +106,11 @@ export default async function DashboardPage() {
       <DashboardView
         kpis={kpis}
         initialRows={initialRows}
+        initialGroupBy={initialGroupBy}
+        initialPage={initialPage}
+        initialPageSize={initialPageSize}
+        initialTotalRows={initialTotalRows}
+        initialTotalPages={initialTotalPages}
         initialRangePreset={initialRangePreset}
         initialCustomFrom={initialCustomFrom}
         initialCustomTo={initialCustomTo}

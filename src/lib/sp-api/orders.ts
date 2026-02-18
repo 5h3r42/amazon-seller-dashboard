@@ -18,6 +18,24 @@ interface FetchOrdersWithItemsInput {
   maxOrdersWithItems?: number;
 }
 
+export interface OrdersFetchDiagnostics {
+  pagesFetched: number;
+  pageLimitHit: boolean;
+  orderLimitHit: boolean;
+  totalOrdersFetched: number;
+  uniqueOrdersFetched: number;
+  ordersWithItemsFetched: number;
+  ordersSkippedForItems: number;
+  maxPages: number;
+  maxOrders: number;
+  maxOrdersWithItems: number;
+}
+
+export interface FetchOrdersWithItemsResult {
+  entries: SpApiOrderWithItems[];
+  diagnostics: OrdersFetchDiagnostics;
+}
+
 async function fetchOrderItemsForOrder(
   client: ReturnType<typeof createOrdersClient>,
   orderId: string,
@@ -55,15 +73,17 @@ export async function fetchOrdersWithItems({
   config,
   createdAfter,
   createdBefore,
-  maxPages = 1,
-  maxOrders = 500,
-  maxOrdersWithItems = 25,
-}: FetchOrdersWithItemsInput): Promise<SpApiOrderWithItems[]> {
+  maxPages = 10,
+  maxOrders = 2000,
+  maxOrdersWithItems = 1000,
+}: FetchOrdersWithItemsInput): Promise<FetchOrdersWithItemsResult> {
   const client = createOrdersClient(config);
 
   const orders: Order[] = [];
   let nextToken: string | undefined;
   let pagesFetched = 0;
+
+  let orderLimitHit = false;
 
   do {
     const response = await withSpApiRetry(
@@ -92,6 +112,7 @@ export async function fetchOrdersWithItems({
     pagesFetched += 1;
 
     if (orders.length >= maxOrders) {
+      orderLimitHit = true;
       break;
     }
   } while (nextToken && pagesFetched < maxPages);
@@ -107,6 +128,8 @@ export async function fetchOrdersWithItems({
   });
 
   const entries: SpApiOrderWithItems[] = [];
+
+  let ordersWithItemsFetched = 0;
 
   for (let index = 0; index < sortedOrders.length; index += 1) {
     const order = sortedOrders[index]!;
@@ -126,7 +149,22 @@ export async function fetchOrdersWithItems({
     }
 
     entries.push({ order, items });
+    ordersWithItemsFetched += 1;
   }
 
-  return entries;
+  return {
+    entries,
+    diagnostics: {
+      pagesFetched,
+      pageLimitHit: Boolean(nextToken && pagesFetched >= maxPages),
+      orderLimitHit,
+      totalOrdersFetched: orders.length,
+      uniqueOrdersFetched: sortedOrders.length,
+      ordersWithItemsFetched,
+      ordersSkippedForItems: Math.max(sortedOrders.length - ordersWithItemsFetched, 0),
+      maxPages,
+      maxOrders,
+      maxOrdersWithItems,
+    },
+  };
 }
